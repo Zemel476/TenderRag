@@ -1,0 +1,31 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.uv_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# 环境变量 (包含密钥，不应打入镜像)
+.env
+
+# 缓存
+.cache/
+
+# 评测
+evaluation/
+
+# 文档
+README.md
+
+# Mac
+.DS_Store
