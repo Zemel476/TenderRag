@@ -1,6 +1,4 @@
-from datetime import datetime
-
-from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, JSON, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, JSON, ForeignKey, func
 from sqlalchemy.orm import DeclarativeBase
 
 
@@ -11,9 +9,9 @@ class Base(DeclarativeBase):
 class AuditMixin:
     """Mixin that adds standard audit columns to a model."""
     created_by = Column(String(64), nullable=True, comment="创建人")
-    created_at = Column(DateTime, default=datetime.now, nullable=False, comment="创建时间")
+    created_at = Column(DateTime, default=func.now(), nullable=False, comment="创建时间")
     updated_by = Column(String(64), nullable=True, comment="修改人")
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=True, comment="修改时间")
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False, comment="修改时间")
     deleted_by = Column(String(64), nullable=True, comment="删除人")
     deleted_at = Column(DateTime, nullable=True, comment="删除时间")
     is_deleted = Column(Boolean, default=False, nullable=False, comment="删除标记")
