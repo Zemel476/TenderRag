@@ -1,11 +1,15 @@
+import asyncio
 import logging
 import queue
 import threading
 import time
+from datetime import datetime, timezone
 
-from app.agents.prompts import INTENT_CLASSIFY_PROMPT, DOMAIN_PROMPTS
+from app.agents.prompts import DOMAIN_PROMPTS
 from app.models.llm import get_llm
-from app.memory.store import memory_store as _store
+from app.intent.pipeline import IntentPipeline
+from app.chat.session import SessionManager
+from app.db.database import async_session
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -30,36 +34,60 @@ def _stream_send(msg_type: str, content: str | None) -> None:
         q.put((msg_type, content))
 
 
+async def _log_intent_to_db(question: str, result):
+    try:
+        async with async_session() as db:
+            from app.db.models import IntentLog
+            log = IntentLog(
+                question=question,
+                failed_level=result.level,
+                scores=result.scores,
+                final_intent=",".join(result.intents) if result.intents else "other",
+                created_by="system",
+            )
+            db.add(log)
+            await db.commit()
+    except Exception:
+        logger.exception("Failed to log intent")
+
+
+intent_pipeline = IntentPipeline(log_callback=lambda q, r: asyncio.ensure_future(_log_intent_to_db(q, r)))
+
+
 def memory_retrieve(state: dict) -> dict:
     session_id = state.get("session_id", "default")
-    messages = _store.get_messages(session_id)
-    state["history"] = messages
-    logger.debug("记忆检索完成 session=%s history_len=%d", session_id, len(messages))
+    try:
+        sid = int(session_id)
+    except (ValueError, TypeError):
+        state["history"] = []
+        return state
+
+    async def _fetch():
+        async with async_session() as db:
+            sm = SessionManager(db)
+            return await sm.get_messages(sid)
+
+    try:
+        history = asyncio.run(_fetch())
+    except Exception:
+        logger.exception("memory_retrieve failed session_id=%s", session_id)
+        history = []
+
+    state["history"] = history
+    logger.debug("记忆检索完成 session=%s history_len=%d", session_id, len(history))
     return state
 
 
 def classify_intent(state: dict) -> dict:
     start_time = time.time()
     question = state["question"]
-    llm = get_llm()
-    prompt = INTENT_CLASSIFY_PROMPT.format(question=question)
-    response = llm.complete(prompt)
-    intent_raw = str(response).strip().lower()
-
-    matched = []
-    for domain in ("legal", "tender", "bidding", "product"):
-        if domain in intent_raw:
-            matched.append(domain)
-
-    # "other" 是排他的：与领域意图混合时过滤掉
-    if not matched:
-        matched = ["other"]
+    intents = intent_pipeline.classify(question)
 
     logger.info(
         "意图分类 intents=%s elapsed=%.2fs question=%s",
-        matched, time.time() - start_time, question[:50],
+        intents, time.time() - start_time, question[:50],
     )
-    return {**state, "intents": matched}
+    return {**state, "intents": intents}
 
 
 def _format_context(results: list[dict]) -> str:
@@ -80,7 +108,6 @@ def _format_context(results: list[dict]) -> str:
 
 
 def _search_domain(domain: str, question: str, top_k: int = 5) -> str:
-    """为单个领域执行检索并返回格式化上下文。"""
     try:
         if domain == "legal":
             from app.rag.legal import get_nodes
@@ -104,9 +131,6 @@ def _search_domain(domain: str, question: str, top_k: int = 5) -> str:
         return f"[提示] {DOMAIN_NAMES.get(domain, domain)} 索引检索失败，请稍后再试。"
 
 
-# ============================================================
-# Agent 节点 — 每个被 Send 并行调用，返回领域级别的结果
-# ============================================================
 def legal_agent(state: dict) -> dict:
     start_time = time.time()
     context = _search_domain("legal", state["question"])
@@ -147,15 +171,11 @@ def product_agent(state: dict) -> dict:
     }
 
 
-# ============================================================
-# Merge Contexts — 扇入节点，合并所有领域结果
-# ============================================================
 def merge_contexts(state: dict) -> dict:
     intents = state.get("intents", ["other"])
     contexts = state.get("contexts", {})
     prompts = state.get("synthesize_prompts", {})
 
-    # 处理 "other" 意图（无检索）
     if intents == ["other"] or not contexts:
         return {
             "context": "",
@@ -163,7 +183,6 @@ def merge_contexts(state: dict) -> dict:
             "intent": "other",
         }
 
-    # 合并各领域上下文
     parts = []
     for domain in intents:
         ctx = contexts.get(domain, "")
@@ -175,11 +194,9 @@ def merge_contexts(state: dict) -> dict:
     if parts:
         combined = "\n\n---\n\n".join(parts)
     else:
-        # 所有领域都没有有效结果，取第一个非空的
         merged = [c for c in contexts.values() if c.strip()]
         combined = merged[0] if merged else "暂无相关信息。"
 
-    # 选择 prompt：单意图用领域专属，多意图用综合 prompt
     if len(intents) == 1:
         prompt = prompts.get(intents[0], DOMAIN_PROMPTS["other"])
     else:
@@ -196,20 +213,6 @@ def merge_contexts(state: dict) -> dict:
     }
 
 
-# ============================================================
-# DEPRECATED: 保留函数体避免导入报错，不再加入 graph
-# ============================================================
-def other_node(state: dict) -> dict:
-    state["context"] = ""
-    state["intent"] = "other"
-    state["synthesize_prompt"] = DOMAIN_PROMPTS["other"]
-    logger.info("意图为 other，跳过检索")
-    return state
-
-
-# ============================================================
-# Synthesize / Store Memory
-# ============================================================
 def synthesize(state: dict):
     start_time = time.time()
     intent = state.get("intent", "other")
@@ -245,8 +248,22 @@ def synthesize(state: dict):
 
 def store_memory(state: dict) -> dict:
     session_id = state.get("session_id", "default")
-    _store.add_message(session_id, "user", state["question"])
-    if "answer" in state and state["answer"]:
-        _store.add_message(session_id, "assistant", state["answer"])
-    logger.debug("记忆存储完成 session=%s", session_id)
+    intents = state.get("intents", ["other"])
+    try:
+        sid = int(session_id)
+    except (ValueError, TypeError):
+        return state
+
+    async def _store():
+        async with async_session() as db:
+            sm = SessionManager(db)
+            await sm.add_message(sid, "user", state["question"], intents)
+            if state.get("answer"):
+                await sm.add_message(sid, "assistant", state["answer"], None)
+
+    try:
+        asyncio.run(_store())
+    except Exception:
+        logger.exception("store_memory failed session_id=%s", session_id)
+
     return state
