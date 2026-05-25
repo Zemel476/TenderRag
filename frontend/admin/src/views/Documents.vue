@@ -33,14 +33,14 @@ async function fetchDocs() {
   total.value = data.length >= pageSize.value ? (page.value * pageSize.value + 1) : page.value * pageSize.value
 }
 
-async function handleUpload(file: any) {
+async function handleUpload(options: any) {
   uploading.value = true
   try {
+    const rawFile = options.file?.raw || options.file
     const formData = new FormData()
-    formData.append('file', file.raw)
+    formData.append('file', rawFile)
     await api.post('/api/documents/upload', formData, {
       params: { category: uploadCategory.value },
-      headers: { 'Content-Type': 'multipart/form-data' },
     })
     ElMessage.success('上传成功')
     fetchDocs()

@@ -46,12 +46,8 @@ class Settings(BaseSettings):
     redis_db: int = 0
     redis_password: str = ""
 
-    # MinIO
-    minio_endpoint: str = "127.0.0.1:9000"
-    minio_access_key: str = "minioadmin"
-    minio_secret_key: str = "minioadmin"
-    minio_bucket: str = "tenderrag-documents"
-    minio_secure: bool = False
+    # Local file storage (replaces MinIO)
+    storage_dir: str = "data/uploads"
 
     # JWT
     jwt_secret_key: str = "change-me-in-production"

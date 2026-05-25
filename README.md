@@ -18,7 +18,7 @@
 
 ```
 Vue3 内部管理台 (:5173) ──┐
-                           ├── FastAPI (:8000) ── MySQL / Redis / Milvus / MinIO
+                           ├── FastAPI (:8000) ── MySQL / Redis / Milvus / 本地存储
 Vue3 外部对话台 (:5174) ──┘
                                 │
                        LangGraph StateGraph
@@ -43,7 +43,7 @@ Vue3 外部对话台 (:5174) ──┘
 - MySQL 8.x（业务数据 + 应用数据）
 - Milvus 2.6.x（向量存储）
 - Redis 7.x（缓存 + 任务队列）
-- MinIO（文件存储，可选）
+- 本地文件系统（文件存储，无需额外服务）
 
 ### 2. 安装依赖
 
@@ -132,7 +132,7 @@ npm install && npm run dev      # 内部管理台 → :5174
 docker compose up -d
 ```
 
-启动服务：FastAPI + ARQ Worker + Redis + MySQL + Milvus + MinIO（前端需单独构建或挂载 nginx）。
+启动服务：FastAPI + ARQ Worker + Redis + MySQL + Milvus（前端需单独构建或挂载 nginx）。
 
 ## 项目结构
 
@@ -170,7 +170,7 @@ TenderRag/                       # Python 后端
 │   ├── chat/
 │   │   └── session.py           # Session + Message CRUD (MySQL + Redis)
 │   ├── file/
-│   │   ├── minio_client.py      # MinIO 客户端
+│   │   ├── minio_client.py      # 本地存储客户端
 │   │   ├── parser.py            # PDF/MD/TXT 解析
 │   │   └── chunker.py           # 分块策略
 │   ├── task/
@@ -253,7 +253,7 @@ evaluation/                      # RAG 评测工具
 | SQLAlchemy + asyncmy | ORM + 异步 MySQL |
 | Redis | 会话缓存 + ARQ 任务队列 |
 | ARQ | 异步任务队列 |
-| MinIO | 文件存储 |
+| 本地存储 | 文件上传与存储 (data/uploads/) |
 | PyTorch + Transformers | BERT 意图分类 |
 | Jieba | 中文分词 + 关键词提取 |
 | Vue3 + Element Plus | 前端框架 |

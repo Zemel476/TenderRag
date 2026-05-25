@@ -97,10 +97,11 @@ def close_embedding_progress():
 
 def get_embedding(query):
     try:
-        resp = requests.post(settings.embedding_base_url, json={
-            "model": settings.embedding_model_name,
-            "input": query
-        })
+        resp = requests.post(
+            settings.embedding_base_url,
+            json={"model": settings.embedding_model_name, "input": query},
+            timeout=30,
+        )
         return resp.json()["embeddings"][0]
     except Exception:
         logger.exception("embedding 请求失败 query=%s", str(query)[:100])

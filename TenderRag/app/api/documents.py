@@ -1,3 +1,4 @@
+import asyncio
 import os
 import uuid
 import tempfile
@@ -12,6 +13,7 @@ from app.auth.dependencies import require_role
 from app.db.database import get_db
 from app.db.models import User, Document
 from app.file.minio_client import upload_file, ensure_bucket
+from app.rag.hybrid import DomainHybridRag, HybridSearchConfig
 from app.schemas.document import DocumentResponse, DocumentUpdate
 from app.task.arq_config import enqueue_job
 
@@ -142,4 +144,27 @@ async def delete_document(
     doc.deleted_by = str(user.id)
     doc.deleted_at = datetime.now(timezone.utc)
     await db.commit()
+
+    # Clean up Milvus vector chunks for this document
+    collection = f"ml_{doc.category}"
+    loop = asyncio.get_running_loop()
+    try:
+        deleted = await loop.run_in_executor(
+            None,
+            lambda: DomainHybridRag(
+                doc.category,
+                HybridSearchConfig(collection_name=collection),
+            ).delete_by_doc_id(doc_id),
+        )
+        if deleted:
+            import logging
+            logging.getLogger(__name__).info(
+                "Deleted %d vector chunks from %s for doc_id=%d", deleted, collection, doc_id,
+            )
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception(
+            "Failed to delete vector chunks from %s for doc_id=%d", collection, doc_id,
+        )
+
     return {"ok": True}

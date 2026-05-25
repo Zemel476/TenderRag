@@ -24,7 +24,8 @@ async function fetchSessions() {
 
 async function createSession() {
   const { data } = await api.post('/api/sessions', { title: '新对话' })
-  sessions.value.unshift(data)
+  const session = { id: data.session_id, title: data.title }
+  sessions.value.unshift(session)
   activeSessionId.value = data.session_id
   messages.value = []
 }

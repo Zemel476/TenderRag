@@ -32,18 +32,29 @@ class IntentPipeline:
 
     def classify(self, question: str) -> list[str]:
         start = time.time()
+        try:
+            result = self.jieba.classify(question)
+            if result.hit:
+                self._log(question, result, start)
+                return result.intents
 
-        result = self.jieba.classify(question)
-        if result.hit:
-            self._log(question, result, start)
-            return result.intents
+            # BERT 暂时禁用
+            # result = self.bert.classify(question)
+            # if result.hit:
+            #     self._log(question, result, start)
+            #     return result.intents
 
-        result = self.bert.classify(question)
-        if result.hit:
-            self._log(question, result, start)
-            return result.intents
+            result = self.llm.classify(question)
+        except Exception:
+            logger.exception("intent classify failed, retrying with LLM")
+            try:
+                result = self.llm.classify(question)
+            except Exception:
+                logger.exception("LLM fallback also failed")
+                result = IntentResult(
+                    level="L3", hit=True, intents=["other"], scores={"other": 1.0},
+                )
 
-        result = self.llm.classify(question)
         self._log(question, result, start)
         return result.intents
 

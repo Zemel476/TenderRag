@@ -40,6 +40,7 @@ class MilvusVectorRepository:
                 overwrite=overwrite,
                 output_fields=["*"],
                 use_async_client=False,
+                timeout=10,
             )
         return self._stores[collection_name]
 
@@ -66,6 +67,24 @@ class MilvusVectorRepository:
         store = self.get_store(collection_name, dim=dimension, overwrite=overwrite)
         return store.add(nodes)
 
+    @staticmethod
+    def _parse_node_content(item: dict[str, Any]) -> dict[str, Any]:
+        """Parse _node_content JSON directly instead of calling get_nodes()."""
+        import json
+        raw = item.get("_node_content", "")
+        if not raw:
+            node_id = item.get("node_id") or item.get("id")
+            return {**item, "node_id": node_id, "text": item.get("text", "")}
+        try:
+            content = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            node_id = item.get("node_id") or item.get("id")
+            return {**item, "node_id": node_id, "text": item.get("text", "")}
+        metadata = content.get("metadata", {}) or {}
+        node_id = metadata.get("node_id") or content.get("node_id") or item.get("id")
+        text = content.get("text", "") or content.get("content", "") or item.get("text", "")
+        return {**metadata, "node_id": node_id, "text": text}
+
     def fetch_all_documents(
             self,
             collection_name: str,
@@ -76,40 +95,39 @@ class MilvusVectorRepository:
         store = self.get_store(collection_name)
         all_records: list[dict[str, Any]] = []
         offset = 0
-        filters = ("id != ''", "id >= 0")
-
+        import sys
         while True:
-            last_error: Exception | None = None
-            batch: list[dict[str, Any]] = []
-            for expr in filters:
-                try:
-                    batch = store.client.query(
-                        collection_name=collection_name,
-                        filter=expr,
-                        output_fields=output_fields or ["*"],
-                        limit=batch_size,
-                        offset=offset,
-                    )
-                    break
-                except Exception as exc:
-                    last_error = exc
-            else:
-                raise last_error or RuntimeError("Milvus query failed")
+            try:
+                batch = store.client.query(
+                    collection_name=collection_name,
+                    filter="id != ''",
+                    output_fields=output_fields or ["*"],
+                    limit=batch_size,
+                    offset=offset,
+                )
+            except Exception as exc:
+                raise RuntimeError(f"Milvus query failed: {exc}") from exc
 
             if not batch:
                 break
 
             for item in batch:
-                if "_node_content" in item:
-                    node = store.get_nodes(node_ids=[item["id"]])[0]
-                    all_records.append(self.node_to_record(node))
-                    continue
-
-                node_id = item.get("node_id") or item.get("id")
-                all_records.append({**item, "node_id": node_id, "text": item.get("text", "")})
+                all_records.append(self._parse_node_content(item))
             offset += len(batch)
+            print(f"  [Milvus] fetch {collection_name}: {offset} docs loaded...", file=sys.stderr, flush=True)
 
         return all_records
+
+    def delete_by_doc_id(self, collection_name: str, doc_id: int) -> int:
+        """Delete all vector chunks belonging to a document from Milvus."""
+        store = self.get_store(collection_name)
+        expr = f'doc_id == "{doc_id}"'
+        try:
+            result = store.client.delete(collection_name, expr)
+            return result.get("delete_count", 0) if isinstance(result, dict) else 0
+        except Exception:
+            # Collection might not exist yet — not an error
+            return 0
 
     def search_dense(
             self,

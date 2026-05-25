@@ -1,15 +1,17 @@
-import asyncio
-import logging
+import json
 import queue
 import threading
 import time
 from datetime import datetime, timezone
 
+from sqlalchemy import select
+
 from app.agents.prompts import DOMAIN_PROMPTS
 from app.models.llm import get_llm
 from app.intent.pipeline import IntentPipeline
-from app.chat.session import SessionManager
-from app.db.database import async_session
+from app.chat.session import sync_redis_client
+from app.db.database import SyncSessionLocal
+from app.db.models import IntentLog, Message, Session as DBSession
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -34,10 +36,10 @@ def _stream_send(msg_type: str, content: str | None) -> None:
         q.put((msg_type, content))
 
 
-async def _log_intent_to_db(question: str, result):
+def _log_intent_sync(question: str, result):
+    """Log intent classification result using sync DB (runs in graph thread)."""
     try:
-        async with async_session() as db:
-            from app.db.models import IntentLog
+        with SyncSessionLocal() as db:
             log = IntentLog(
                 question=question,
                 failed_level=result.level,
@@ -46,15 +48,7 @@ async def _log_intent_to_db(question: str, result):
                 created_by="system",
             )
             db.add(log)
-            await db.commit()
-    except Exception:
-        logger.exception("Failed to log intent")
-
-
-def _log_intent_sync(question: str, result):
-    """Sync wrapper for intent logging — runs in graph thread without event loop."""
-    try:
-        asyncio.run(_log_intent_to_db(question, result))
+            db.commit()
     except Exception:
         logger.exception("Failed to log intent")
 
@@ -70,13 +64,26 @@ def memory_retrieve(state: dict) -> dict:
         state["history"] = []
         return state
 
-    async def _fetch():
-        async with async_session() as db:
-            sm = SessionManager(db)
-            return await sm.get_messages(sid)
-
     try:
-        history = asyncio.run(_fetch())
+        cache_key = f"session:{sid}:messages"
+        cached = sync_redis_client.lrange(cache_key, 0, -1)
+        if cached:
+            history = [json.loads(m) for m in cached]
+        else:
+            with SyncSessionLocal() as db:
+                rows = db.execute(
+                    select(Message)
+                    .where(Message.session_id == sid, Message.is_deleted == False)
+                    .order_by(Message.created_at)
+                    .limit(20)
+                ).scalars().all()
+                history = [
+                    {"role": m.role, "content": m.content, "intents": m.intents}
+                    for m in rows
+                ]
+                for item in history:
+                    sync_redis_client.rpush(cache_key, json.dumps(item, ensure_ascii=False))
+                sync_redis_client.expire(cache_key, 3600)
     except Exception:
         logger.exception("memory_retrieve failed session_id=%s", session_id)
         history = []
@@ -254,6 +261,35 @@ def synthesize(state: dict):
     return state
 
 
+def _add_message_sync(db, session_id: int, role: str, content: str, intents: list[str] | None = None):
+    """Add a message using sync DB + sync Redis (graph thread safe)."""
+    msg = Message(
+        session_id=session_id,
+        role=role,
+        content=content,
+        intents=intents,
+        created_by="system",
+    )
+    db.add(msg)
+    db.commit()
+
+    cache_key = f"session:{session_id}:messages"
+    item = {
+        "role": role,
+        "content": content,
+        "intents": intents,
+    }
+    sync_redis_client.rpush(cache_key, json.dumps(item, ensure_ascii=False))
+    sync_redis_client.expire(cache_key, 3600)
+
+    session = db.execute(
+        select(DBSession).where(DBSession.id == session_id)
+    ).scalar_one_or_none()
+    if session:
+        session.updated_at = datetime.now(timezone.utc)
+        db.commit()
+
+
 def store_memory(state: dict) -> dict:
     session_id = state.get("session_id", "default")
     intents = state.get("intents", ["other"])
@@ -262,15 +298,11 @@ def store_memory(state: dict) -> dict:
     except (ValueError, TypeError):
         return state
 
-    async def _store():
-        async with async_session() as db:
-            sm = SessionManager(db)
-            await sm.add_message(sid, "user", state["question"], intents)
-            if state.get("answer"):
-                await sm.add_message(sid, "assistant", state["answer"], None)
-
     try:
-        asyncio.run(_store())
+        with SyncSessionLocal() as db:
+            _add_message_sync(db, sid, "user", state["question"], intents)
+            if state.get("answer"):
+                _add_message_sync(db, sid, "assistant", state["answer"], None)
     except Exception:
         logger.exception("store_memory failed session_id=%s", session_id)
 

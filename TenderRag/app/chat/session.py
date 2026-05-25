@@ -5,9 +5,19 @@ from sqlalchemy.ext.asyncio import AsyncSession as SqlAlchemyAsyncSession
 from app.db.models import Session, Message
 from app.config import settings
 import redis.asyncio as aioredis
+import redis as sync_redis
 
 redis_client = aioredis.from_url(
     f"redis://{settings.redis_host}:{settings.redis_port}/{settings.redis_db}",
+    password=settings.redis_password or None,
+    decode_responses=True,
+)
+
+# Sync Redis client for graph nodes (which run in threads)
+sync_redis_client = sync_redis.Redis(
+    host=settings.redis_host,
+    port=settings.redis_port,
+    db=settings.redis_db,
     password=settings.redis_password or None,
     decode_responses=True,
 )

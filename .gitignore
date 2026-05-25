@@ -2,6 +2,9 @@
 docs/
 .superpowers/
 
+# Uploaded files (local storage)
+data/uploads/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

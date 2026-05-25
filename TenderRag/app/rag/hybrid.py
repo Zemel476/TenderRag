@@ -156,6 +156,7 @@ class MilvusHybridSearcher:
 
         docs = self.fetch_all_documents()
         self._documents = {doc["node_id"]: doc for doc in docs}
+        print(f"[BM25] built cache for {self.config.collection_name}: {len(self._documents)} docs")
         return self._documents
 
     def _get_bm25(self, node_ids: list[str] | None = None) -> BM25Scorer:
@@ -212,3 +213,8 @@ class DomainHybridRag:
         ]
         print(f"{self.domain_name} hybrid search: {time.time() - start_time:.3f}s")
         return result
+
+    def delete_by_doc_id(self, doc_id: int) -> int:
+        return self.searcher.repository.delete_by_doc_id(
+            self.searcher.config.collection_name, doc_id,
+        )

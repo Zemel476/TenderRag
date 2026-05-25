@@ -1,52 +1,42 @@
 # -*- coding: utf-8 -*-
 """
-minio_client.py
-MinIO 客户端封装
+storage.py — 本地文件系统存储（替代 MinIO）
 """
-from minio import Minio
-from minio.error import S3Error
+import os
+import shutil
+from pathlib import Path
 
 from app.config import settings
 
-_client = None
 
-
-def get_minio() -> Minio:
-    """返回模块级 Minio 客户端单例。"""
-    global _client
-    if _client is None:
-        _client = Minio(
-            settings.minio_endpoint,
-            access_key=settings.minio_access_key,
-            secret_key=settings.minio_secret_key,
-            secure=settings.minio_secure,
-        )
-    return _client
+def _ensure_dir() -> Path:
+    p = Path(settings.storage_dir)
+    p.mkdir(parents=True, exist_ok=True)
+    return p
 
 
 def ensure_bucket() -> None:
-    """如果 bucket 不存在则创建。"""
-    client = get_minio()
-    bucket = settings.minio_bucket
-    if not client.bucket_exists(bucket):
-        client.make_bucket(bucket)
+    """兼容旧接口：确保存储目录存在。"""
+    _ensure_dir()
 
 
 def upload_file(local_path: str, object_name: str) -> str:
-    """上传文件到 MinIO，返回 object_name。"""
-    client = get_minio()
-    ensure_bucket()
-    client.fput_object(settings.minio_bucket, object_name, local_path)
+    """将文件复制到存储目录，返回 object_name。"""
+    dest_dir = _ensure_dir() / os.path.dirname(object_name)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest_path = _ensure_dir() / object_name
+    shutil.copy2(local_path, str(dest_path))
     return object_name
 
 
 def download_file(object_name: str, local_path: str) -> None:
-    """从 MinIO 下载文件到本地。"""
-    client = get_minio()
-    client.fget_object(settings.minio_bucket, object_name, local_path)
+    """从存储目录读取文件到本地路径。"""
+    src_path = _ensure_dir() / object_name
+    shutil.copy2(str(src_path), local_path)
 
 
 def delete_file(object_name: str) -> None:
-    """从 MinIO 删除文件。"""
-    client = get_minio()
-    client.remove_object(settings.minio_bucket, object_name)
+    """从存储目录删除文件。"""
+    p = _ensure_dir() / object_name
+    if p.exists():
+        p.unlink()
