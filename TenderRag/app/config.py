@@ -42,4 +42,38 @@ class Settings(BaseSettings):
     milvus_vector_product_name: str = "ml_product"
 
 
+    # Redis
+    redis_host: str = "127.0.0.1"
+    redis_port: int = 6379
+    redis_db: int = 0
+    redis_password: str = ""
+
+    # MinIO
+    minio_endpoint: str = "127.0.0.1:9000"
+    minio_access_key: str = "minioadmin"
+    minio_secret_key: str = "minioadmin"
+    minio_bucket: str = "tenderrag-documents"
+    minio_secure: bool = False
+
+    # JWT
+    jwt_secret_key: str = "change-me-in-production"
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 1440
+
+    # Intent Pipeline
+    jieba_threshold: float = 0.6
+    bert_threshold: float = 0.7
+    llm_threshold: float = 0.5
+    bert_model_path: str = "models/bert_intent_classifier.pth"
+    bert_model_type: str = "bert-base-chinese"
+    num_intent_labels: int = 4
+    intent_labels: list[str] = ["legal", "tender", "product", "other"]
+
+    # ARQ
+    arq_redis_dsn: str = "redis://127.0.0.1:6379/1"
+
+    # Database (for SQLAlchemy)
+    database_async_url: str = ""
+
+
 settings = Settings()
