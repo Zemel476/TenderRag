@@ -17,7 +17,14 @@ async function handleLogin() {
     await userStore.login(form.value.username, form.value.password)
     router.push('/chat')
   } catch (e: any) {
-    error.value = e.response?.data?.detail || '登录失败'
+    console.error('Login error:', e)
+    if (e.response) {
+      error.value = e.response.data?.detail || '登录失败'
+    } else if (e.request) {
+      error.value = '无法连接服务器，请确认后端已启动 (localhost:8000)'
+    } else {
+      error.value = e.message || '登录失败'
+    }
   } finally {
     loading.value = false
   }

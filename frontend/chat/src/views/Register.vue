@@ -21,7 +21,14 @@ async function handleRegister() {
     await userStore.register(form.value.username, form.value.password)
     router.push('/chat')
   } catch (e: any) {
-    error.value = e.response?.data?.detail || '注册失败'
+    console.error('Register error:', e)
+    if (e.response) {
+      error.value = e.response.data?.detail || '注册失败'
+    } else if (e.request) {
+      error.value = '无法连接服务器，请确认后端已启动 (localhost:8000)'
+    } else {
+      error.value = e.message || '注册失败'
+    }
   } finally {
     loading.value = false
   }
