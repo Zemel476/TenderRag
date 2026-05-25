@@ -4,7 +4,7 @@ import tempfile
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,10 +13,12 @@ from app.db.database import get_db
 from app.db.models import User, Document
 from app.file.minio_client import upload_file, ensure_bucket
 from app.schemas.document import DocumentResponse, DocumentUpdate
+from app.task.arq_config import enqueue_job
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
 SUPPORTED_EXTENSIONS = {".pdf": "pdf", ".md": "md", ".txt": "txt"}
+VALID_CATEGORIES = {"legal", "tender", "product"}
 ADMIN = require_role("admin")
 
 
@@ -27,6 +29,8 @@ async def upload_single(
     user: User = Depends(ADMIN),
     db: AsyncSession = Depends(get_db),
 ):
+    if category not in VALID_CATEGORIES:
+        raise HTTPException(400, f"无效的类别: {category}，仅支持 legal/tender/product")
     ext = Path(file.filename).suffix.lower()
     if ext not in SUPPORTED_EXTENSIONS:
         raise HTTPException(400, f"不支持的文件类型: {ext}，仅支持 PDF/MD/TXT")
@@ -61,31 +65,22 @@ async def upload_single(
     await db.commit()
     await db.refresh(doc)
 
-    # Enqueue ARQ job
-    from arq.connections import create_pool
-    from app.task.arq_config import redis_settings
-
-    pool = await create_pool(redis_settings)
-    try:
-        await pool.enqueue_job(
-            "process_document", doc.id, file.filename, file_type, category, object_name
-        )
-    finally:
-        await pool.close()
-
+    await enqueue_job("process_document", doc.id, file.filename, file_type, category, object_name)
     return {"id": doc.id, "status": doc.status, "filename": file.filename}
 
 
 @router.get("")
 async def list_documents(
     category: str | None = None,
-    page: int = 1,
-    page_size: int = 20,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     user: User = Depends(ADMIN),
     db: AsyncSession = Depends(get_db),
 ):
     query = select(Document).where(Document.is_deleted == False)
     if category:
+        if category not in VALID_CATEGORIES:
+            raise HTTPException(400, f"无效的类别: {category}")
         query = query.where(Document.category == category)
     query = (
         query.order_by(desc(Document.created_at))
@@ -114,6 +109,8 @@ async def update_document(
     user: User = Depends(ADMIN),
     db: AsyncSession = Depends(get_db),
 ):
+    if body.category is not None and body.category not in VALID_CATEGORIES:
+        raise HTTPException(400, f"无效的类别: {body.category}")
     result = await db.execute(
         select(Document).where(Document.id == doc_id, Document.is_deleted == False)
     )

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -6,6 +6,7 @@ from app.auth.dependencies import require_role
 from app.db.database import get_db
 from app.db.models import User, IndexTask, IntentLog
 from app.schemas.index import IndexBuildRequest, IndexTaskResponse
+from app.task.arq_config import enqueue_job
 
 router = APIRouter(tags=["index"])
 ADMIN = require_role("admin")
@@ -16,23 +17,14 @@ async def trigger_build(
     body: IndexBuildRequest,
     user: User = Depends(ADMIN),
 ):
-    from arq.connections import create_pool
-    from app.task.arq_config import redis_settings
-
-    pool = await create_pool(redis_settings)
-    try:
-        job = await pool.enqueue_job(
-            "build_index", body.task_type, body.category, body.document_ids
-        )
-        return {"job_id": job.job_id}
-    finally:
-        await pool.close()
+    job = await enqueue_job("build_index", body.task_type, body.category, body.document_ids)
+    return {"job_id": job.job_id}
 
 
 @router.get("/api/index/tasks")
 async def list_tasks(
-    page: int = 1,
-    page_size: int = 20,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     user: User = Depends(ADMIN),
     db: AsyncSession = Depends(get_db),
 ):
@@ -80,8 +72,8 @@ async def get_task(
 @router.get("/api/intent-logs")
 async def list_intent_logs(
     failed_level: str | None = None,
-    page: int = 1,
-    page_size: int = 50,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
     user: User = Depends(ADMIN),
     db: AsyncSession = Depends(get_db),
 ):
