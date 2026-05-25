@@ -94,20 +94,22 @@ async def build_index(ctx, task_type: str, category: str, document_ids: list[int
             database=settings.database_db_name,
             charset="utf8mb4",
         )
-        table_map = {"legal": "法律法规", "tender": "政府招标信息", "product": "市场产品信息"}
-        table = table_map.get(category)
-        if not table:
-            raise ValueError(f"Unknown category: {category}")
+        try:
+            table_map = {"legal": "法律法规", "tender": "政府招标信息", "product": "市场产品信息"}
+            table = table_map.get(category)
+            if not table:
+                raise ValueError(f"Unknown category: {category}")
 
-        cursor = conn.cursor()
-        if document_ids:
-            placeholders = ",".join(["%s"] * len(document_ids))
-            cursor.execute(f"SELECT * FROM `{table}` WHERE id IN ({placeholders})", document_ids)
-        else:
-            cursor.execute(f"SELECT * FROM `{table}`")
-        rows = cursor.fetchall()
-        columns = [desc[0] for desc in cursor.description]
-        conn.close()
+            cursor = conn.cursor()
+            if document_ids:
+                placeholders = ",".join(["%s"] * len(document_ids))
+                cursor.execute(f"SELECT * FROM `{table}` WHERE id IN ({placeholders})", document_ids)
+            else:
+                cursor.execute(f"SELECT * FROM `{table}`")
+            rows = cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description]
+        finally:
+            conn.close()
 
         # Build all chunks first, then write once
         all_chunks = []
@@ -124,7 +126,6 @@ async def build_index(ctx, task_type: str, category: str, document_ids: list[int
             docs = [LlamaDocument(text=c["content"], metadata=c["metadata"]) for c in all_chunks]
             writer = MilvusIndexWriter(collection_name=f"ml_{category}")
             writer.write_documents(docs)
-            processed = len(all_chunks)
 
         # Mark done
         async with async_session() as db:

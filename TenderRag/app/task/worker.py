@@ -1,6 +1,11 @@
 import logging
-from arq import create_worker
-from app.task.arq_config import redis_settings
+from arq import run_worker
+from app.task.arq_config import (
+    redis_settings,
+    ARQ_CONCURRENCY,
+    ARQ_RETRY_COUNT,
+    ARQ_TIMEOUT,
+)
 from app.task.jobs import process_document, build_index
 
 logging.basicConfig(level=logging.INFO)
@@ -22,10 +27,13 @@ FUNCTIONS = [
 
 if __name__ == "__main__":
     import asyncio
-    worker = create_worker(
+    worker = run_worker(
         redis_settings=redis_settings,
         functions=FUNCTIONS,
         on_startup=startup,
         on_shutdown=shutdown,
+        max_jobs=ARQ_CONCURRENCY,
+        job_timeout=ARQ_TIMEOUT,
+        max_tries=ARQ_RETRY_COUNT,
     )
-    asyncio.run(worker.async_run())
+    asyncio.run(worker)
