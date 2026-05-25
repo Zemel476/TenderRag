@@ -5,6 +5,9 @@ chunker.py
 """
 import re
 
+from app.utils.legal_document_util import split_node_document
+from app.utils.pdf_load_util import split_long_text_by_sentence
+
 
 def chunk_text(text: str, file_type: str, metadata: dict) -> list[dict]:
     """根据文件类型对文本进行分块。
@@ -33,18 +36,16 @@ def chunk_text(text: str, file_type: str, metadata: dict) -> list[dict]:
 
 def _chunk_pdf(text: str, metadata: dict) -> list[dict]:
     """PDF 分块：法律文档按章/节切分，否则按句子切分。"""
-    # 检查是否包含中文法律文档特征（第X章 / 第X节）
-    if re.search(r"第[一二三四五六七八九十百]+章|第[一二三四五六七八九十百]+节", text):
-        from app.utils.legal_document_util import split_node_document
+    if not text.strip():
+        return []
 
+    if re.search(r"第[一二三四五六七八九十百]+章|第[一二三四五六七八九十百]+节", text):
         pattern = r"第[一二三四五六七八九十百]+章[^\n]*|第[一二三四五六七八九十百]+节[^\n]*"
         chunks = split_node_document(metadata.get("source", ""), text, pattern)
         return [{"content": c, "metadata": {**metadata}} for c in chunks]
-    else:
-        from app.utils.pdf_load_util import split_long_text_by_sentence
 
-        chunks = split_long_text_by_sentence(text)
-        return [{"content": c, "metadata": {**metadata}} for c in chunks]
+    chunks = split_long_text_by_sentence(text)
+    return [{"content": c, "metadata": {**metadata}} for c in chunks]
 
 
 def _chunk_md(text: str, metadata: dict) -> list[dict]:
@@ -55,7 +56,6 @@ def _chunk_md(text: str, metadata: dict) -> list[dict]:
 
     for line in text.split("\n"):
         if line.startswith("# "):
-            # 遇到新的一级标题，保存之前的块
             if current_content:
                 chunks.append(
                     {
@@ -65,8 +65,7 @@ def _chunk_md(text: str, metadata: dict) -> list[dict]:
                 )
             current_heading = line.lstrip("# ").strip()
             current_content = []
-        elif line.startswith("## "):
-            # 二级标题保留在内容中（不重置）
+        elif line.startswith("## ") or line.startswith("### "):
             current_content.append(line)
         else:
             current_content.append(line)
