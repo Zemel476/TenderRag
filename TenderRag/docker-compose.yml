@@ -2,21 +2,42 @@ services:
   app:
     build: .
     ports:
-      - "7860:7860"   # Gradio
       - "8000:8000"   # FastAPI
     env_file:
       - .env
     environment:
       - DATABASE_URL=mysql
       - MILVUS_VECTOR_URI=http://milvus:19530
+      - REDIS_URL=redis://redis:6379
     depends_on:
       mysql:
         condition: service_healthy
       milvus:
         condition: service_started
+      redis:
+        condition: service_started
     restart: unless-stopped
-    # 默认启动 Gradio，如需 FastAPI 修改 command:
-    # command: ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+  arq-worker:
+    build: .
+    command: uv run python -m app.task.worker
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=mysql
+      - MILVUS_VECTOR_URI=http://milvus:19530
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+      - mysql
+      - milvus
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
 
   mysql:
     image: mysql:8.0

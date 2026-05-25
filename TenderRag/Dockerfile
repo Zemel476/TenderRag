@@ -25,11 +25,9 @@ COPY data/ ./data/
 # 复制环境变量模板
 COPY .explame.env ./.explame.env
 
-EXPOSE 7860 8000
+EXPOSE 8000
 
 ENV PYTHONUNBUFFERED=1
 
-# 默认运行 Gradio 前端，可通过 CMD 覆盖为 FastAPI
-# docker run ... tenderrag                           → Gradio UI (端口 7860)
-# docker run ... tenderrag uvicorn app.main:app ...  → FastAPI (端口 8000)
-CMD ["uv", "run", "python", "-m", "app.frontend.gradio_app"]
+# 默认启动 FastAPI
+CMD ["uv", "run", "python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
