@@ -3,7 +3,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=BASE_DIR / ".env",
@@ -40,7 +39,6 @@ class Settings(BaseSettings):
     milvus_vector_legal_name: str = "ml_legal"
     milvus_vector_tender_name: str = "ml_tender"
     milvus_vector_product_name: str = "ml_product"
-
 
     # Redis
     redis_host: str = "127.0.0.1"
