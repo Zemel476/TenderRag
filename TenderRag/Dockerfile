@@ -19,11 +19,6 @@ RUN uv sync --frozen --no-dev --no-install-project
 
 # 复制项目代码
 COPY app/ ./app/
-COPY scripts/ ./scripts/
-COPY data/ ./data/
-
-# 复制环境变量模板
-COPY .explame.env ./.explame.env
 
 EXPOSE 8000
 
