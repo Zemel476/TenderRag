@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import jwt
 from passlib.context import CryptContext
 from sqlalchemy import select
@@ -42,7 +42,7 @@ class AuthService:
             "sub": str(user.id),
             "username": user.username,
             "role": user.role,
-            "exp": datetime.now() + timedelta(minutes=settings.jwt_expire_minutes),
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_expire_minutes),
         }
         return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
