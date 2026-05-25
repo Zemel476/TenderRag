@@ -9,6 +9,7 @@ import redis.asyncio as aioredis
 redis_client = aioredis.from_url(
     f"redis://{settings.redis_host}:{settings.redis_port}/{settings.redis_db}",
     password=settings.redis_password or None,
+    decode_responses=True,
 )
 
 
@@ -103,6 +104,14 @@ class SessionManager:
         if session:
             session.updated_at = datetime.now(timezone.utc)
             await self.db.commit()
+
+    async def get_session_owner(self, session_id: int) -> int | None:
+        """Return user_id of the session owner, or None if not found."""
+        result = await self.db.execute(
+            select(Session).where(Session.id == session_id, Session.is_deleted == False)
+        )
+        session = result.scalar_one_or_none()
+        return session.user_id if session else None
 
     async def soft_delete_session(self, session_id: int, deleted_by: str):
         result = await self.db.execute(

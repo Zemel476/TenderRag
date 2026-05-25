@@ -4,7 +4,7 @@ import queue
 import threading
 from asyncio import get_running_loop
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,6 +24,16 @@ router = APIRouter(tags=["chat"])
 graph = build_graph()
 
 
+async def _verify_session_owner(session_id: int, user: User, db: AsyncSession) -> None:
+    """Raise 403 if the session does not belong to the current user."""
+    sm = SessionManager(db)
+    owner_id = await sm.get_session_owner(session_id)
+    if owner_id is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会话不存在")
+    if owner_id != user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权访问此会话")
+
+
 def sse_event(data: dict) -> str:
     return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
 
@@ -32,8 +42,10 @@ def sse_event(data: dict) -> str:
 async def chat(
     req: ChatRequest,
     user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """SSE streaming chat endpoint."""
+    await _verify_session_owner(int(req.session_id), user, db)
     logger.info(
         "Chat request session=%s user=%s len=%d",
         req.session_id, user.username, len(req.message),
@@ -84,8 +96,10 @@ async def chat(
 async def chat_non_stream(
     req: ChatRequest,
     user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Non-streaming chat endpoint."""
+    await _verify_session_owner(int(req.session_id), user, db)
     logger.info("Non-stream chat request session=%s user=%s", req.session_id, user.username)
     loop = get_running_loop()
 
@@ -146,6 +160,7 @@ async def get_messages(
     db: AsyncSession = Depends(get_db),
 ):
     """Get messages for a session."""
+    await _verify_session_owner(session_id, user, db)
     sm = SessionManager(db)
     return await sm.get_messages(session_id)
 
@@ -157,6 +172,7 @@ async def delete_session(
     db: AsyncSession = Depends(get_db),
 ):
     """Soft-delete a session."""
+    await _verify_session_owner(session_id, user, db)
     sm = SessionManager(db)
     await sm.soft_delete_session(session_id, deleted_by=str(user.id))
     return {"ok": True}

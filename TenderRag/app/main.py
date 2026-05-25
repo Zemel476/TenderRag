@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,12 +8,20 @@ from app.api.chat import router as chat_router
 from app.api.documents import router as documents_router
 from app.api.data import router as data_router
 from app.api.index import router as index_router
+from app.config import settings
 from app.file.minio_client import ensure_bucket
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     ensure_bucket()
+    if settings.jwt_secret_key == "change-me-in-production":
+        logger.warning(
+            "SECURITY: JWT secret key is still the default value. "
+            "Set JWT_SECRET_KEY in .env before production deployment."
+        )
     yield
 
 

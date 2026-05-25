@@ -1,3 +1,4 @@
+from app.config import settings
 from app.intent.base import BaseIntentClassifier, IntentResult
 from app.agents.prompts import INTENT_CLASSIFY_PROMPT
 from app.models.llm import get_llm
@@ -12,11 +13,10 @@ class LLMIntentClassifier(BaseIntentClassifier):
         prompt = INTENT_CLASSIFY_PROMPT.format(question=question)
         response = str(llm.complete(prompt)).strip().lower()
 
-        all_domains = ["legal", "tender", "product", "other"]
-        intents = [d for d in all_domains if d in response]
+        intents = [d for d in settings.intent_labels if d in response]
 
         scores = {}
-        for d in all_domains:
+        for d in settings.intent_labels:
             scores[d] = 0.85 if d in intents else 0.05
 
         if not intents:

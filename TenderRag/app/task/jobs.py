@@ -3,7 +3,7 @@ import logging
 import tempfile
 from datetime import datetime, timezone
 
-import pymysql
+import asyncmy
 from llama_index.core.schema import Document as LlamaDocument
 from sqlalchemy import select
 
@@ -87,7 +87,7 @@ async def build_index(ctx, task_type: str, category: str, document_ids: list[int
         task_id = task.id
 
     try:
-        conn = pymysql.connect(
+        conn = await asyncmy.connect(
             host=settings.database_url,
             user=settings.database_user,
             password=settings.database_password,
@@ -100,14 +100,14 @@ async def build_index(ctx, task_type: str, category: str, document_ids: list[int
             if not table:
                 raise ValueError(f"Unknown category: {category}")
 
-            cursor = conn.cursor()
-            if document_ids:
-                placeholders = ",".join(["%s"] * len(document_ids))
-                cursor.execute(f"SELECT * FROM `{table}` WHERE id IN ({placeholders})", document_ids)
-            else:
-                cursor.execute(f"SELECT * FROM `{table}`")
-            rows = cursor.fetchall()
-            columns = [desc[0] for desc in cursor.description]
+            async with conn.cursor() as cursor:
+                if document_ids:
+                    placeholders = ",".join(["%s"] * len(document_ids))
+                    await cursor.execute(f"SELECT * FROM `{table}` WHERE id IN ({placeholders})", document_ids)
+                else:
+                    await cursor.execute(f"SELECT * FROM `{table}`")
+                rows = await cursor.fetchall()
+                columns = [desc[0] for desc in cursor.description]
         finally:
             conn.close()
 

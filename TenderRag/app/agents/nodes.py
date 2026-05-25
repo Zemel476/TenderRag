@@ -51,7 +51,15 @@ async def _log_intent_to_db(question: str, result):
         logger.exception("Failed to log intent")
 
 
-intent_pipeline = IntentPipeline(log_callback=lambda q, r: asyncio.ensure_future(_log_intent_to_db(q, r)))
+def _log_intent_sync(question: str, result):
+    """Sync wrapper for intent logging — runs in graph thread without event loop."""
+    try:
+        asyncio.run(_log_intent_to_db(question, result))
+    except Exception:
+        logger.exception("Failed to log intent")
+
+
+intent_pipeline = IntentPipeline(log_callback=_log_intent_sync)
 
 
 def memory_retrieve(state: dict) -> dict:

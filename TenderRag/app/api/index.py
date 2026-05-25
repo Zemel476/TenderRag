@@ -30,6 +30,7 @@ async def list_tasks(
 ):
     query = (
         select(IndexTask)
+        .where(IndexTask.is_deleted == False)
         .order_by(desc(IndexTask.created_at))
         .offset((page - 1) * page_size)
         .limit(page_size)
@@ -55,7 +56,9 @@ async def get_task(
     user: User = Depends(ADMIN),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(IndexTask).where(IndexTask.id == task_id))
+    result = await db.execute(
+        select(IndexTask).where(IndexTask.id == task_id, IndexTask.is_deleted == False)
+    )
     t = result.scalar_one_or_none()
     if not t:
         raise HTTPException(404, "任务不存在")
@@ -77,7 +80,11 @@ async def list_intent_logs(
     user: User = Depends(ADMIN),
     db: AsyncSession = Depends(get_db),
 ):
-    query = select(IntentLog).order_by(desc(IntentLog.created_at))
+    query = (
+        select(IntentLog)
+        .where(IntentLog.is_deleted == False)
+        .order_by(desc(IntentLog.created_at))
+    )
     if failed_level:
         query = query.where(IntentLog.failed_level == failed_level)
     query = query.offset((page - 1) * page_size).limit(page_size)

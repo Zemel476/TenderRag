@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+
 from app.auth.dependencies import require_role
 from app.data.repository import list_records, get_record
 
@@ -16,7 +17,7 @@ async def browse_data(
     if category not in ("legal", "tender", "product"):
         raise HTTPException(400, "category 必须为 legal/tender/product")
     try:
-        return list_records(category, page, page_size)
+        return await list_records(category, page, page_size)
     except ValueError as e:
         raise HTTPException(400, str(e))
 
@@ -29,7 +30,7 @@ async def get_data_detail(
 ):
     if category not in ("legal", "tender", "product"):
         raise HTTPException(400, "category 必须为 legal/tender/product")
-    record = get_record(category, record_id)
+    record = await get_record(category, record_id)
     if not record:
         raise HTTPException(404, "记录不存在")
     return record

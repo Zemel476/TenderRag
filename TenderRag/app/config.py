@@ -64,8 +64,8 @@ class Settings(BaseSettings):
     llm_threshold: float = 0.5
     bert_model_path: str = "models/bert_intent_classifier.pth"
     bert_model_type: str = "bert-base-chinese"
-    num_intent_labels: int = 4
-    intent_labels: list[str] = ["legal", "tender", "product", "other"]
+    num_intent_labels: int = 5
+    intent_labels: list[str] = ["legal", "tender", "bidding", "product", "other"]
 
     # ARQ
     arq_redis_dsn: str = "redis://127.0.0.1:6379/1"

@@ -3,7 +3,6 @@ import time
 from app.config import settings
 from app.intent.base import IntentResult
 from app.intent.jieba_classifier import JiebaIntentClassifier
-from app.intent.bert_classifier import BertIntentClassifier
 from app.intent.llm_classifier import LLMIntentClassifier
 
 logger = logging.getLogger(__name__)
@@ -18,9 +17,18 @@ class IntentPipeline:
         llm_threshold: float | None = None,
     ):
         self.jieba = JiebaIntentClassifier(threshold=jieba_threshold or settings.jieba_threshold)
-        self.bert = BertIntentClassifier(threshold=bert_threshold or settings.bert_threshold)
+        self.bert_threshold = bert_threshold or settings.bert_threshold
         self.llm = LLMIntentClassifier(threshold=llm_threshold or settings.llm_threshold)
         self.log_callback = log_callback
+        self._bert = None
+
+    @property
+    def bert(self):
+        """Lazy-load BERT to avoid ~100MB model download at import time."""
+        if self._bert is None:
+            from app.intent.bert_classifier import BertIntentClassifier
+            self._bert = BertIntentClassifier(threshold=self.bert_threshold)
+        return self._bert
 
     def classify(self, question: str) -> list[str]:
         start = time.time()
