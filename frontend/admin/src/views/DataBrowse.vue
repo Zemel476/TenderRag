@@ -34,17 +34,25 @@ watch(category, () => {
 })
 
 async function handleBuildIndex() {
-  const ids = selectedIds.value.length > 0 ? selectedIds.value : undefined
+  const body: Record<string, unknown> = {
+    task_type: taskType.value,
+    category: category.value,
+  }
+  if (selectedIds.value.length > 0) {
+    body.document_ids = selectedIds.value
+  }
   try {
-    await api.post('/api/index/build', {
-      task_type: taskType.value,
-      category: category.value,
-      document_ids: ids,
-    })
+    await api.post('/api/index/build', body)
     ElMessage.success('索引构建任务已提交')
     buildDialog.value = false
   } catch (e: any) {
-    ElMessage.error(e.response?.data?.detail || '提交失败')
+    const detail = e.response?.data?.detail
+    if (Array.isArray(detail)) {
+      const messages = detail.map((d: any) => d.msg || d.type).join('; ')
+      ElMessage.error(messages || '提交失败')
+    } else {
+      ElMessage.error(detail || '提交失败')
+    }
   }
 }
 
