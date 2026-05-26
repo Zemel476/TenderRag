@@ -43,7 +43,7 @@ Vue3 外部对话台 (:5174) ──┘
 - MySQL 8.x（业务数据 + 应用数据）
 - Milvus 2.6.x（向量存储）
 - Redis 7.x（缓存 + 任务队列）
-- 本地文件系统（文件存储，无需额外服务）
+- 本地文件系统（文件存储于 `app/data/uploads/`）
 
 ### 2. 安装依赖
 
@@ -89,15 +89,9 @@ JWT_SECRET_KEY=your-secret-key
 uv run python -m app.db.init_db
 ```
 
-### 5. 构建向量索引
+> 向量索引构建已集成到管理台 UI：登录管理台 → 数据浏览 → 选择分类 → 点击"构建索引"。也可通过 API `POST /api/index/build` 触发后台 ARQ 任务。
 
-```bash
-uv run python scripts/vector_index_legal.py
-uv run python scripts/vector_index_tender.py
-uv run python scripts/vector_index_product.py
-```
-
-### 6. 启动服务
+### 5. 启动服务
 
 ```bash
 # FastAPI 后端 (端口 8000)
@@ -107,7 +101,7 @@ uv run python -m app.main
 uv run python -m app.task.worker
 ```
 
-### 7. 启动前端
+### 6. 启动前端
 
 ```bash
 cd frontend/chat
@@ -117,7 +111,7 @@ cd frontend/admin
 npm install && npm run dev      # 内部管理台 → :5174
 ```
 
-### 8. 访问
+### 7. 访问
 
 | 地址 | 说明 |
 |------|------|
@@ -164,24 +158,26 @@ TenderRag/                       # Python 后端
 │   │   ├── graph.py             # LangGraph StateGraph 定义
 │   │   ├── nodes.py             # 图节点实现
 │   │   └── prompts.py           # Prompt 模板
-│   ├── rag/                     # 检索核心 (不变)
+│   ├── rag/                     # 检索核心
 │   │   ├── hybrid.py, fusion.py, milvus.py, indexing.py
 │   │   └── legal.py, tender.py, bidding.py, product.py
 │   ├── chat/
 │   │   └── session.py           # Session + Message CRUD (MySQL + Redis)
 │   ├── file/
-│   │   ├── minio_client.py      # 本地存储客户端
+│   │   ├── minio_client.py      # 文件存储客户端
 │   │   ├── parser.py            # PDF/MD/TXT 解析
 │   │   └── chunker.py           # 分块策略
 │   ├── task/
 │   │   ├── arq_config.py        # ARQ Redis 配置
-│   │   ├── jobs.py              # 后台任务定义
+│   │   ├── jobs.py              # 后台任务定义 (文档处理 + 索引构建)
 │   │   └── worker.py            # Worker 启动入口
 │   ├── data/
-│   │   └── repository.py        # 业务表查询
+│   │   ├── repository.py        # 业务表查询
+│   │   └── uploads/             # 上传文件存储
 │   ├── models/llm.py            # LLM + Embedding 模型封装
-│   ├── schemas/                 # Pydantic 模型
-│   └── utils/                   # 工具函数
+│   ├── schemas/                 # Pydantic 请求/响应模型
+│   │   ├── auth.py, chat.py, document.py, index.py
+│   └── utils/                   # 工具函数 (PDF 加载、数据库工具等)
 │
 frontend/                        # 前端
 ├── chat/                        # Vue3 外部对话台
@@ -191,14 +187,9 @@ frontend/                        # 前端
     └── src/views/
         ├── Login.vue, Documents.vue, DataBrowse.vue, Chat.vue, Tasks.vue
 
-scripts/                         # 数据准备脚本
-├── vector_index_legal.py        # 法律向量索引构建
-├── vector_index_tender.py       # 招标向量索引构建
-├── vector_index_product.py      # 产品向量索引构建
-├── download_model.py            # 模型下载
-└── ...
-
-evaluation/                      # RAG 评测工具
+evaluation/                      # RAG 评测
+├── embedding/                   # Embedding 模型评测
+└── model/                       # 模型评测
 ```
 
 ## API 接口
