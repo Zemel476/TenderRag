@@ -67,6 +67,8 @@ async def process_document(ctx, doc_id: int, filename: str, file_type: str, cate
                 doc.updated_at = datetime.now(timezone.utc)
                 await db.commit()
         logger.exception("Document processing failed doc_id=%s", doc_id)
+
+
         return {"status": "failed", "error": str(e)}
 
 
